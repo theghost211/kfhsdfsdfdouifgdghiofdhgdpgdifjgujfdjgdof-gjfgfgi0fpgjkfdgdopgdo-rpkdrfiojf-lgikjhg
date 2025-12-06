@@ -2,68 +2,74 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>VHS Camera</title>
+<title>VHS Camera Pro</title>
 
 <style>
-    body {
-        margin: 0;
-        background: black;
-        overflow: hidden;
-        font-family: monospace;
-        color: white;
-    }
+    body { margin: 0; background: black; font-family: sans-serif; color: white; overflow: hidden; }
 
     #wrapper {
         position: relative;
-        width: 100vw;
-        height: 100vh;
-        background: black;
+        width: 100vw; height: 100vh;
     }
 
     video, canvas {
         position: absolute;
-        width: 100%;
-        height: 100%;
+        width: 100%; height: 100%;
         object-fit: cover;
     }
 
-    /* الخطوط الأفقية (scanlines) */
-    #scanlines {
+    /* واجهة الأزرار */
+    #controls {
         position: absolute;
-        width:100%;
-        height:100%;
+        bottom: 10px;
+        left: 50%; transform: translateX(-50%);
+        display: flex; gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 95%;
+    }
+
+    button, select {
+        padding: 10px 15px;
+        border: none; border-radius: 6px;
+        background: rgba(255,255,255,0.15);
+        color: white; font-size: 16px;
+        backdrop-filter: blur(4px);
+    }
+
+    /* إعدادات */
+    #settingsBox {
+        position: absolute;
+        top: 10px; left: 10px;
+        padding: 10px;
+        background: rgba(0,0,0,0.4);
+        border-radius: 8px;
+        display: none;
+    }
+
+    #scanlines {
+        position: absolute; width:100%; height:100%;
         pointer-events:none;
         background: repeating-linear-gradient(
             to bottom,
-            rgba(255,255,255,0.03),
-            rgba(255,255,255,0.03) 2px,
+            rgba(255,255,255,0.04),
+            rgba(255,255,255,0.04) 2px,
             rgba(0,0,0,0) 4px
         );
         mix-blend-mode: overlay;
     }
 
-    /* إطار VHS */
-    #vhsFrame {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        border: 8px solid rgba(255,255,255,0.15);
-        box-shadow: 0 0 40px rgba(0,0,0,0.8) inset;
-    }
-
-    /* التاريخ */
     #timestamp {
         position: absolute;
-        bottom: 20px;
-        left: 20px;
+        bottom: 50px; left: 20px;
         font-size: 22px;
         color: white;
-        text-shadow: 0 0 5px black;
+        text-shadow: 0 0 4px black;
         pointer-events: none;
     }
 </style>
-
 </head>
+
 <body>
 
 <div id="wrapper">
@@ -71,63 +77,144 @@
     <canvas id="canvas"></canvas>
 
     <div id="scanlines"></div>
-    <div id="vhsFrame"></div>
+    <div id="timestamp">REC ● 2025</div>
 
-    <div id="timestamp">DEC 06 2025  11:14 PM</div>
+    <!-- الإعدادات -->
+    <div id="settingsBox">
+        <label>Grain:
+            <input type="range" id="grain" min="0" max="50" value="25">
+        </label><br>
+        <label>Flicker:
+            <input type="range" id="flick" min="0" max="10" value="5">
+        </label><br>
+        <label>Brightness:
+            <input type="range" id="bright" min="50" max="150" value="100">
+        </label><br>
+        <label>Contrast:
+            <input type="range" id="contrast" min="50" max="150" value="100">
+        </label><br>
+    </div>
+
+    <!-- الأزرار -->
+    <div id="controls">
+        <button id="recordBtn">🎥 تسجيل</button>
+        <button id="downloadBtn">⬇️ تحميل</button>
+        <button id="flipBtn">🔄 قلب الكاميرا</button>
+        <button id="settingsBtn">⚙️ إعدادات</button>
+
+        <select id="filterSelect">
+            <option value="vhs">VHS</option>
+            <option value="dirty">Dirty</option>
+            <option value="clean">Clean</option>
+            <option value="bw">Black & White</option>
+        </select>
+    </div>
 </div>
 
 <script>
+let currentFacing = "environment";
+let stream;
+let recorder;
+let chunks = [];
+
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-navigator.mediaDevices.getUserMedia({ video:true, audio:false })
-    .then(stream => {
-        video.srcObject = stream;
-        requestAnimationFrame(drawVHS);
+function startCamera() {
+    navigator.mediaDevices.getUserMedia({
+        video: { facingMode: currentFacing },
+        audio: true
+    }).then(s => {
+        stream = s;
+        video.srcObject = s;
+        requestAnimationFrame(drawFilter);
     });
+}
 
-function drawVHS() {
-    if (!video.videoWidth) {
-        requestAnimationFrame(drawVHS);
-        return;
-    }
+startCamera();
+
+document.getElementById("flipBtn").onclick = () => {
+    currentFacing = currentFacing === "user" ? "environment" : "user";
+    stream.getTracks().forEach(t => t.stop());
+    startCamera();
+};
+
+document.getElementById("settingsBtn").onclick = () => {
+    let box = document.getElementById("settingsBox");
+    box.style.display = box.style.display === "block" ? "none" : "block";
+};
+
+document.getElementById("recordBtn").onclick = () => {
+    chunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = downloadVideo;
+    recorder.start();
+    alert("بدأ التسجيل!");
+};
+
+document.getElementById("downloadBtn").onclick = () => {
+    if (chunks.length > 0) downloadVideo();
+};
+
+function downloadVideo() {
+    let blob = new Blob(chunks, { type: "video/mp4" });
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement("a");
+    a.href = url;
+    a.download = "vhs_record.mp4";
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function drawFilter() {
+    if (!video.videoWidth) return requestAnimationFrame(drawFilter);
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    // رسم الفيديو
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0);
 
     let frame = ctx.getImageData(0,0,canvas.width,canvas.height);
     let d = frame.data;
 
-    for (let i = 0; i < d.length; i += 4) {
-        // Grain
-        let noise = (Math.random() - 0.5) * 30;
-        d[i] += noise;
-        d[i+1] += noise;
-        d[i+2] += noise;
+    let grain = +document.getElementById("grain").value;
+    let flick = +document.getElementById("flick").value;
+    let bright = +document.getElementById("bright").value / 100;
+    let cont = +document.getElementById("contrast").value / 100;
 
-        // Slight tint (قديم / متسخ)
-        d[i] *= 0.95;  
-        d[i+1] *= 0.92; 
-        d[i+2] *= 0.90;
+    let filter = document.getElementById("filterSelect").value;
+
+    for (let i = 0; i < d.length; i += 4) {
+        d[i] = d[i] * bright; 
+        d[i+1] = d[i+1] * bright;
+        d[i+2] = d[i+2] * bright;
+
+        d[i] = ((d[i] - 128) * cont) + 128;
+        d[i+1] = ((d[i+1] - 128) * cont) + 128;
+        d[i+2] = ((d[i+2] - 128) * cont) + 128;
+
+        if (filter === "bw") {
+            let avg = (d[i] + d[i+1] + d[i+2]) / 3;
+            d[i] = d[i+1] = d[i+2] = avg;
+        }
+
+        if (filter === "dirty" || filter === "vhs") {
+            let n = (Math.random() - 0.5) * grain;
+            d[i] += n; d[i+1] += n; d[i+2] += n;
+        }
+
+        if (filter === "vhs") {
+            d[i] *= 0.95;
+        }
     }
 
     ctx.putImageData(frame,0,0);
 
-    // خط تشويش عشوائي يتحرك
-    if (Math.random() < 0.15) {
-        let y = Math.random() * canvas.height;
-        ctx.fillStyle = "rgba(255,255,255,0.2)";
-        ctx.fillRect(0, y, canvas.width, 2);
-    }
+    canvas.style.opacity = 1 - (Math.random() * flick / 100);
 
-    // Flicker
-    canvas.style.opacity = 0.90 + Math.random() * 0.1;
-
-    requestAnimationFrame(drawVHS);
+    requestAnimationFrame(drawFilter);
 }
 </script>
 
