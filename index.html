@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>Vintage Camera</title>
+<style>
+    body {
+        background: #111;
+        color: white;
+        text-align: center;
+        font-family: sans-serif;
+        padding: 10px;
+    }
+
+    #canvas {
+        width: 95vw;
+        max-width: 500px;
+        border-radius: 10px;
+        margin-top: 15px;
+        background: black;
+    }
+
+    button {
+        padding: 10px 20px;
+        margin: 10px;
+        border: none;
+        border-radius: 8px;
+        background: #444;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+    }
+
+    button:active {
+        background: #222;
+    }
+</style>
+</head>
+<body>
+
+<h2>📼 Vintage Camera – فلتر قديم</h2>
+
+<video id="video" autoplay playsinline style="display:none;"></video>
+<canvas id="canvas"></canvas>
+
+<br>
+
+<button id="startRecord">🎥 بدء التسجيل</button>
+<button id="stopRecord">⛔ إيقاف التسجيل</button>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let mediaRecorder;
+let recordedChunks = [];
+
+// تشغيل الكاميرا
+navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    .then(stream => {
+        video.srcObject = stream;
+
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+        mediaRecorder.onstop = saveVideo;
+    });
+
+// فلتر قديم + وسخ
+function applyVintageEffect() {
+    if (!video.videoWidth) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    ctx.drawImage(video, 0, 0);
+
+    let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let d = frame.data;
+
+    for (let i = 0; i < d.length; i += 4) {
+        // Grain
+        let noise = (Math.random() - 0.5) * 50;
+        d[i] += noise;
+        d[i+1] += noise;
+        d[i+2] += noise;
+
+        // Sepia
+        let r = d[i], g = d[i+1], b = d[i+2];
+        d[i] = r * 0.9 + g * 0.7 + b * 0.4;
+        d[i+1] = r * 0.6 + g * 0.5 + b * 0.3;
+        d[i+2] = r * 0.3 + g * 0.2 + b * 0.15;
+
+        // Flicker
+        d[i] *= 0.9 + Math.random() * 0.1;
+        d[i+1] *= 0.9 + Math.random() * 0.1;
+        d[i+2] *= 0.9 + Math.random() * 0.1;
+    }
+
+    ctx.putImageData(frame, 0, 0);
+
+    // Scratches
+    if (Math.random() < 0.1) {
+        ctx.strokeStyle = "rgba(255,255,255,0.2)";
+        ctx.beginPath();
+        ctx.moveTo(Math.random()*canvas.width, 0);
+        ctx.lineTo(Math.random()*canvas.width, canvas.height);
+        ctx.stroke();
+    }
+
+    // Vignette
+    let grd = ctx.createRadialGradient(
+        canvas.width/2, canvas.height/2, canvas.width/4,
+        canvas.width/2, canvas.height/2, canvas.width/1.1
+    );
+    grd.addColorStop(0, "rgba(0,0,0,0)");
+    grd.addColorStop(1, "rgba(0,0,0,0.8)");
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    requestAnimationFrame(applyVintageEffect);
+}
+
+video.onplay = applyVintageEffect;
+
+// تسجيل
+document.getElementById("startRecord").onclick = () => {
+    recordedChunks = [];
+    mediaRecorder.start();
+    alert("بدأ التسجيل 🎥");
+};
+
+// إيقاف
+document.getElementById("stopRecord").onclick = () => {
+    mediaRecorder.stop();
+    alert("تم إيقاف التسجيل!");
+};
+
+// حفظ الملف
+function saveVideo() {
+    const blob = new Blob(recordedChunks, { type: "video/mp4" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "vintage-video.mp4";
+    a.click();
+
+    URL.revokeObjectURL(url);
+}
+</script>
+
+</body>
+</html>
